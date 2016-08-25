@@ -16,10 +16,11 @@
 import React from 'react';
 import {Tab, Tabs, TabList, TabPanel} from 'react-tabs';
 
-import {composeRequest} from '../request';
 import RequestViewer from './request-viewer';
 import Select2MultiSuggest from './select2-multi-suggest';
 import ResponseViewer from './response-viewer';
+
+import {composeRequest} from '../request';
 
 import {gaAll} from '../../analytics';
 import AlertDispatcher from '../../components/alert-dispatcher';
@@ -28,7 +29,9 @@ import HelpIconLink from '../../components/help-icon-link';
 import SearchSuggest from '../../components/search-suggest';
 import ViewSelector from '../../components/view-selector';
 
+
 /* global gapi */
+
 
 /**
  * The parameters that are safe to track the values entered by users.
@@ -38,10 +41,21 @@ import ViewSelector from '../../components/view-selector';
 const PARAMS_TO_TRACK = ['startDate', 'endDate', 'metrics', 'dimensions'];
 const REQUEST_TYPES = ['HISTOGRAM', 'PIVOT', 'COHORT'];
 const COHORT_SIZES = ['Day', 'Week', 'Month'];
-const SAMPLING_LEVELS = ['DEFAULT', 'SMALL', 'LARGE'];
+const SAMPLING_LEVELS = ['', 'DEFAULT', 'SMALL', 'LARGE'];
+const INCLUDE_EMPTY_ROWS_VALUES = ['', false, true];
+
 const REFERENCE_URL =
     'https://developers.google.com' +
     '/analytics/devguides/reporting/core/v4/rest/v4/reports/batchGet#';
+
+
+const batchGet = async (request) => {
+  return new Promise((resolve, reject) => {
+    gapi.client.analyticsreporting.reports
+        .batchGet(request)
+        .then(resolve, reject);
+  });
+};
 
 
 export default class RequestComposer extends React.Component {
@@ -65,6 +79,11 @@ export default class RequestComposer extends React.Component {
    *     containing the target.name and target.value properties.
    */
   handleParamChange = ({target: {name, value}}) => {
+    // Convert the string values 'true' and 'false' to boolean values
+    value = value == 'true' ? true : (value == 'false' ? false : value);
+
+    console.log(name, value);
+
     this.props.actions.updateParams({[name]: value});
 
     if (name == 'metrics' || name == 'dimensions') {
@@ -107,30 +126,26 @@ export default class RequestComposer extends React.Component {
     e.preventDefault();
     let {actions, params, settings} = this.props;
     let paramsClone = {...params};
+    let request = composeRequest(params, settings);
+    let response;
 
     actions.setQueryState(true);
 
-    let trackableParamData = Object.keys(paramsClone).map((key) =>
-        PARAMS_TO_TRACK.includes(key) ? `${key}=${paramsClone[key]}` : key)
-        .join('&');
-
-    // Set it on the tracker so it gets sent with all Query Explorer hits.
-    gaAll('set', 'dimension2', trackableParamData);
-
-    let request = composeRequest(params, settings);
-    gapi.client.analyticsreporting.reports.batchGet(request
-      ).then(function(response) {
-        actions.updateResponse(response);
-        actions.updateSettings({
-          'responseType': settings.requestType,
-          'responseCohortSize': params.cohortSize
+    try {
+      response = await batchGet(request);
+    } catch (response) {
+      debugger;
+      AlertDispatcher.addOnce({
+        title: 'Oops, there was an error',
+        message: response.result.error.message
       });
-      }, function(response) {
-        AlertDispatcher.addOnce({
-          title: 'Oops, there was an error',
-          message: response.result.error.message
-        });
-        actions.updateResponse(response);
+      actions.updateResponse(response);
+    }
+
+    actions.updateResponse(response);
+    actions.updateSettings({
+      responseType: settings.requestType,
+      responseCohortSize: params.cohortSize
     });
 
     actions.setQueryState(false);
@@ -157,15 +172,10 @@ export default class RequestComposer extends React.Component {
     let formControlClass = 'FormControl FormControl--inline';
     let formActionClass = formControlClass + ' FormControl--action';
     let requiredFormControlClass = formControlClass +' FormControl--required';
-    let maximumSelectionSize = 2;
+    let maximumSelectionSize = 7;
 
     return (
       <div>
-        <h3 className="H3--underline">Select a view</h3>
-
-        <ViewSelector
-          viewId={params.viewId}
-          onChange={this.handleViewSelectorChange} />
 
         <Tabs
           onSelect={this.handleRequestChange}
@@ -195,6 +205,12 @@ export default class RequestComposer extends React.Component {
             </p>
           </TabPanel>
         </Tabs>
+
+        <h3 className="H3--underline">Select a view</h3>
+
+        <ViewSelector
+          viewId={params.viewId}
+          onChange={this.handleViewSelectorChange} />
 
         <h3 className="H3--underline">Set the query parameters</h3>
 
@@ -473,6 +489,7 @@ export default class RequestComposer extends React.Component {
           ) :
           null}
 
+          {settings.requestType != 'COHORT' ? (
           <div className={formControlClass}>
             <label className="FormControl-label">filters Expression</label>
             <div className="FormControl-body">
@@ -488,8 +505,9 @@ export default class RequestComposer extends React.Component {
               </div>
             </div>
           </div>
+          ) :
+          null}
 
-          {settings.requestType != 'COHORT' ? (
           <div className={formControlClass}>
             <label className="FormControl-label">segment</label>
             <div className="FormControl-body">
@@ -509,14 +527,12 @@ export default class RequestComposer extends React.Component {
                     className="Checkbox"
                     type="checkbox"
                     onChange={this.handleSegmentDefinitionToggle}
-                    checked={settings.useDefinition} />
-                  Show segment definitions instead of viewId.
+                    checked={!!settings.useDefinition} />
+                  Show segment definitions instead of segment IDs.
                 </label>
               </div>
             </div>
           </div>
-          ) :
-          null}
 
           <div className={formControlClass}>
             <label className="FormControl-label">samplingLevel</label>
@@ -527,8 +543,8 @@ export default class RequestComposer extends React.Component {
                   value={params['samplingLevel'] || ''}
                   name="samplingLevel"
                   onChange={this.handleParamChange}>
-                  {SAMPLING_LEVELS.map((option) => (
-                    <option value={option} key={option}>{option}</option>
+                  {SAMPLING_LEVELS.map((option, i) => (
+                    <option value={option} key={i}>{option}</option>
                   ))}
                 </select>
                 <HelpIconLink
@@ -538,22 +554,30 @@ export default class RequestComposer extends React.Component {
             </div>
           </div>
 
+          {settings.requestType != 'COHORT' ? (
           <div className={formControlClass}>
             <label className="FormControl-label">includeEmptyRows</label>
             <div className="FormControl-body">
               <div className="FlexLine">
-                <input
+                <select
                   className="FormField FormFieldCombo-field"
+                  value={String(params['includeEmptyRows']) || ''}
                   name="includeEmptyRows"
-                  value={params['includeEmptyRows'] || ''}
-                  onChange={this.handleParamChange} />
+                  onChange={this.handleParamChange}>
+                  {INCLUDE_EMPTY_ROWS_VALUES.map((option, i) => (
+                    <option value={String(option)} key={i}>{String(option)}</option>
+                  ))}
+                </select>
                 <HelpIconLink
                   url={REFERENCE_URL}
                   name="ReportRequest.FIELDS.include_empty_rows" />
               </div>
             </div>
           </div>
+          ) :
+          null}
 
+          {settings.requestType == 'PIVOT' ? (
           <div className={formControlClass}>
             <label className="FormControl-label">pageToken</label>
             <div className="FormControl-body">
@@ -569,7 +593,10 @@ export default class RequestComposer extends React.Component {
               </div>
             </div>
           </div>
+          ) :
+          null}
 
+          {settings.requestType == 'PIVOT' ? (
           <div className={formControlClass}>
             <label className="FormControl-label">pageSize</label>
             <div className="FormControl-body">
@@ -585,25 +612,23 @@ export default class RequestComposer extends React.Component {
               </div>
             </div>
           </div>
+          ) :
+          null}
 
           <div className={formActionClass}>
             <div className="FormControl-body">
               <button
                 className="Button Button--action"
                 disabled={isQuerying}>
-                {isQuerying ? 'Loading...' : 'Run Query'}
+                {isQuerying ? 'Loading...' : 'Make Request'}
               </button>
             </div>
           </div>
 
         </form>
 
-        <RequestViewer
-          params={params}
-          settings={settings}
-        />
-
         <ResponseViewer
+          params={params}
           response={response}
           settings={settings}
         />

@@ -24,18 +24,10 @@ import moment from 'moment';
  */
 function buildReportRequest(params) {
   let reportRequest = {
-      viewId: params.viewId,
-      samplingLevel: params.samplingLevel,
+    viewId: params.viewId
   };
   if (params.filters) {
     reportRequest.filtersExpression = params.filters;
-  }
-  if (params.includeEmptyRows) {
-    if (params.includeEmptyRows.toLowerCase() == 'true') {
-      reportRequest.includeEmptyRows = 'true';
-    } else if (params.includeEmptyRows.toLowerCase() == 'false') {
-      reportRequest.includeEmptyRows = 'false';
-    }
   }
   if (params.pageSize &&
       parseInt(params.pageSize)) {
@@ -347,6 +339,13 @@ export function composeRequest(params, settings) {
     return null;
   }
   let reportRequest = buildReportRequest(params);
+
+  if (settings.requestType == 'COHORT') {
+    reportRequest.includeEmptyRows = true;
+  } else if (params.includeEmptyRows !== '') {
+    reportRequest.includeEmptyRows = params.includeEmptyRows
+  }
+
   applyDateRanges(reportRequest, params, settings);
   applyMetrics(reportRequest, params, settings);
   applyDimensions(reportRequest, params, settings);

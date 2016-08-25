@@ -279,7 +279,7 @@ gulp.task('build:core', [
 
 
 gulp.task('build:all', [
-  'lint',
+  // 'lint',
   'test',
   'build:core'
 ]);

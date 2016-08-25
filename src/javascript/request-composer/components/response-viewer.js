@@ -15,10 +15,15 @@
 
 import React from 'react';
 import {Tab, Tabs, TabList, TabPanel} from 'react-tabs';
-import {syntaxHighlight} from '../request';
 import HistogramChart from './histogram-chart';
 import PivotTable from './pivot-table';
 import CohortTable from './cohort-table';
+import CodeBlock from '../../components/code-block';
+
+
+import RequestViewer from './request-viewer';
+
+
 
 const RESULTS_VIEW = {
   HISTOGRAM: 'Chart',
@@ -30,29 +35,31 @@ export default class ResultsViewer extends React.Component {
 
   /** @return {Object} */
   render() {
-    let {response, settings} = this.props;
+    let {response, settings, params} = this.props;
+    let responseCode = JSON.stringify(response.result, null, 2);
 
-    let highlighted = syntaxHighlight(response.result, null, 2);
-
-    if (response.status > 200) {
+    if (response.status >= 400) {
 
       return (
           <div>
           <h2>API Response</h2>
-          <pre dangerouslySetInnerHTML={{__html: highlighted}}>
-          </pre>
+          <CodeBlock code={responseCode} lang="json" />
           </div>
       );
-    } else if (response.status == 200) {
+    } else {
       return(
           <div>
           <Tabs selectedIndex={0}>
             <TabList>
+              <Tab>Request JSON</Tab>
               <Tab>Response {RESULTS_VIEW[settings.responseType]}</Tab>
               <Tab>Response JSON</Tab>
             </TabList>
             <TabPanel>
-              <h2>Response {RESULTS_VIEW[settings.responseType]}</h2>
+              <RequestViewer params={params} settings={settings} />
+            </TabPanel>
+            <TabPanel>
+              {/* <h2>Response {RESULTS_VIEW[settings.responseType]}</h2> */}
               {settings.responseType == 'HISTOGRAM' ? (
                 <HistogramChart
                   response={response}
@@ -75,15 +82,13 @@ export default class ResultsViewer extends React.Component {
             </TabPanel>
             <TabPanel>
               <h2>API Response</h2>
-              <pre dangerouslySetInnerHTML={{__html: highlighted}}>
-              </pre>
+              <CodeBlock code={responseCode} lang="json" />
             </TabPanel>
 
           </Tabs>
           </div>
       );
     }
-    return (null);
   }
 }
 
